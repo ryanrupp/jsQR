@@ -137,7 +137,9 @@
             inversionAttempts: "dontInvert",
           });
           if (code) {
-            alert(code.data);
+            if (confirm("Navigate to: " + code.data + "?")) {
+              window.location.replace(code.data);
+            }
           }
         }
 
