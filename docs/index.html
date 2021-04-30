@@ -8,7 +8,7 @@
     body {
       font-family: 'Ropa Sans', sans-serif;
       color: #333;
-      max-width: 640px;
+      max-width: 100%;
       margin: 0 auto;
       position: relative;
     }
@@ -53,9 +53,6 @@
   </style>
 </head>
 <body>
-  <h1>jsQR Demo</h1>
-  <a id="githubLink" href="https://github.com/cozmo/jsQR">View documentation on Github</a>
-  <p>Pure JavaScript QR code decoding library.</p>
   <div id="loadingMessage">🎥 Unable to access video stream (please make sure you have a webcam enabled)</div>
   <canvas id="canvas" hidden></canvas>
   <div id="output" hidden>
@@ -70,25 +67,46 @@
     var outputContainer = document.getElementById("output");
     var outputMessage = document.getElementById("outputMessage");
     var outputData = document.getElementById("outputData");
+    var lastRanTimestamp;
 
-    function drawLine(begin, end, color) {
+    function drawDashedLine(beginX, beginY, endX, endY, color) {
       canvas.beginPath();
-      canvas.moveTo(begin.x, begin.y);
-      canvas.lineTo(end.x, end.y);
+      canvas.setLineDash([10, 10]);
+      canvas.moveTo(beginX, beginY);
+      canvas.lineTo(endX, endY);
+      canvas.lineWidth = 2;
+      canvas.strokeStyle = color;
+      canvas.stroke();
+    }
+
+    function drawLine(begin, end, color, xOffset, yOffset) {
+      canvas.beginPath();
+      canvas.moveTo(begin.x + xOffset, begin.y + yOffset);
+      canvas.lineTo(end.x + xOffset, end.y + yOffset);
       canvas.lineWidth = 4;
       canvas.strokeStyle = color;
       canvas.stroke();
     }
 
+    function drawCaptureSquare(x, y, width, height) {
+      const rightEdge = x + width;
+      const bottomEdge = y + height;
+      canvas.setLineDash([10, 10]);
+      canvas.lineWidth = 6;
+      canvas.strokeStyle = "#FF3B58";
+      canvas.strokeRect(x, y, width, height);
+    }
+
     // Use facingMode: environment to attemt to get the front camera on phones
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function(stream) {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 },
+        height: { ideal: 1080 }  } }).then(function(stream) {
       video.srcObject = stream;
       video.setAttribute("playsinline", true); // required to tell iOS safari we don't want fullscreen
       video.play();
       requestAnimationFrame(tick);
     });
 
-    function tick() {
+    function tick(timestamp) {
       loadingMessage.innerText = "⌛ Loading video..."
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         loadingMessage.hidden = true;
@@ -98,25 +116,38 @@
         canvasElement.height = video.videoHeight;
         canvasElement.width = video.videoWidth;
         canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
-        var imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
-        var code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "dontInvert",
-        });
-        if (code) {
-          drawLine(code.location.topLeftCorner, code.location.topRightCorner, "#FF3B58");
-          drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "#FF3B58");
-          drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#FF3B58");
-          drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#FF3B58");
-          outputMessage.hidden = true;
-          outputData.parentElement.hidden = false;
-          outputData.innerText = code.data;
-        } else {
-          outputMessage.hidden = false;
-          outputData.parentElement.hidden = true;
+
+        const midpoint = canvasElement.height / 2;
+        const xMidpoint = canvasElement.width / 2;
+        const yBuff = canvasElement.height / 8;
+        const xStart = xMidpoint - yBuff;
+        const imageCaptureWidth = yBuff  * 2;
+        const imageCaptureHeight = yBuff * 2;
+        const imageYStart = midpoint - yBuff;
+
+        if (lastRanTimestamp === undefined) {
+          lastRanTimestamp = timestamp;
         }
+        var elapsed = timestamp - lastRanTimestamp;
+        // TODO could do this pattern where we fit in big scans as well on occasion
+        if (elapsed > 300) {
+          lastRanTimestamp = timestamp;
+          var imageData = canvas.getImageData(xStart, imageYStart, imageCaptureWidth, imageCaptureHeight);
+          var code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
+          if (code) {
+            alert(code.data);
+          }
+        }
+
+        // Draw target area
+        drawCaptureSquare(xStart, imageYStart, imageCaptureWidth, imageCaptureHeight);
       }
       requestAnimationFrame(tick);
     }
+
+    
   </script>
 </body>
 </html>
