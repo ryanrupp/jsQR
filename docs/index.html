@@ -35,6 +35,29 @@
     var canvas = canvasElement.getContext("2d");
     var loadingMessage = document.getElementById("loadingMessage");
     var lastRanTimestamp;
+    var inConfirm = false;
+    const checkEveryMs = 300;
+
+    const handleDataResponseFn = function handleDataResponse(code) {
+      if (code && code.data.startsWith("http") && !inConfirm) {
+        inConfirm = true;
+        if (confirm("Navigate to: " + code.data + "?")) {
+          window.location.replace(code.data);
+        } else {
+          inConfirm = false;
+        }
+      }
+    }
+
+    let qrCodeDetectWorker;
+    if (window.Worker) {
+      qrCodeDetectWorker = new Worker("detect-qr-code-worker.js");
+
+      qrCodeDetectWorker.onmessage = function(e) {
+        handleDataResponseFn(e.data);
+      }
+    }
+
 
     function drawDashedLine(beginX, beginY, endX, endY, color) {
       canvas.beginPath();
@@ -86,16 +109,18 @@
         }
         var elapsed = timestamp - lastRanTimestamp;
         // TODO could do this pattern where we fit in big scans as well on occasion
-        if (elapsed > 300) {
+        if (elapsed > checkEveryMs) {
           lastRanTimestamp = timestamp;
-          var imageData = canvas.getImageData(xStart, imageYStart, imageCaptureWidth, imageCaptureHeight);
-          var code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "dontInvert",
-          });
-          if (code && code.data.startsWith("http")) {
-            if (confirm("Navigate to: " + code.data + "?")) {
-              window.location.replace(code.data);
-            }
+          const imageData = canvas.getImageData(xStart, imageYStart, imageCaptureWidth, imageCaptureHeight);
+          if (qrCodeDetectWorker) {
+            qrCodeDetectWorker.postMessage(imageData);
+          } else {
+            // no worker, run inline
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "dontInvert",
+            });
+
+            handleDataResponseFn(code);
           }
         }
 
